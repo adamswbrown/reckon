@@ -34,10 +34,12 @@
     },
     "files": [
       "dist-electron/**/*",
+      "build/icon.png",
       "package.json"
     ],
     "mac": {
       "category": "public.app-category.business",
+      "icon": "build/icon.icns",
       "target": [
         {
           "target": "dmg",
@@ -48,9 +50,11 @@
       ]
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": "nsis"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": "AppImage"
     }
   }

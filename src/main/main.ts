@@ -34,6 +34,7 @@ async function createWindow(): Promise<void> {
     width: 1400,
     height: 900,
     backgroundColor: "#0e0e0f",
+    icon: resolve(__dirname, "../../build/icon.png"),
     show: false,
     webPreferences: {
       preload: resolve(__dirname, "../preload/preload.js"),

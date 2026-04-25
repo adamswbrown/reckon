@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Reckon icon — savings ladder on bone, squircle">
+  <defs>
+    <clipPath id="squircle-ladder-bone">
+      <path d="M 512 0&#xA;               C 880 0, 1024 144, 1024 512&#xA;               C 1024 880, 880 1024, 512 1024&#xA;               C 144 1024, 0 880, 0 512&#xA;               C 0 144, 144 0, 512 0 Z"></path>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#squircle-ladder-bone)">
+    <rect width="1024" height="1024" fill="#efe8d8"></rect>
+    <rect x="0.5" y="0.5" width="1023" height="1023" fill="none" stroke="#0e0d0c" stroke-opacity="0.12" stroke-width="1"></rect>
+
+    <g stroke-linecap="butt" fill="none">
+      
+      <line x1="232" y1="240" x2="232" y2="824" stroke="#0e0d0c" stroke-width="56"></line>
+      <line x1="792" y1="240" x2="792" y2="824" stroke="#0e0d0c" stroke-width="56"></line>
+
+      
+      <line x1="232" y1="760" x2="792" y2="760" stroke="#d6883a" stroke-width="76"></line>
+      <line x1="232" y1="540" x2="624" y2="540" stroke="#d6883a" stroke-width="76"></line>
+      <line x1="232" y1="320" x2="456" y2="320" stroke="#d6883a" stroke-width="76"></line>
+    </g>
+
+    
+    <g fill="none" opacity="0.18">
+      <line x1="232" y1="240" x2="232" y2="824" stroke="#0e0d0c" stroke-width="2" transform="translate(16 0)"></line>
+      <line x1="792" y1="240" x2="792" y2="824" stroke="#0e0d0c" stroke-width="2" transform="translate(16 0)"></line>
+    </g>
+    
+    <g fill="none" opacity="0.22">
+      <line x1="232" y1="760" x2="792" y2="760" stroke="#0e0d0c" stroke-width="2" transform="translate(0 22)"></line>
+      <line x1="232" y1="540" x2="624" y2="540" stroke="#0e0d0c" stroke-width="2" transform="translate(0 22)"></line>
+      <line x1="232" y1="320" x2="456" y2="320" stroke="#0e0d0c" stroke-width="2" transform="translate(0 22)"></line>
+    </g>
+  </g>
+</svg>
