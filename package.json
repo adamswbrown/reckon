@@ -9,7 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "engine:smoke": "tsx scripts/smoke-nmef.ts",
+    "engine:smoke": "tsx scripts/smoke.ts",
     "electron:build": "tsc -p tsconfig.app.json && tsc -p tsconfig.renderer.json && node scripts/post-build.mjs",
     "electron:start": "electron .",
     "electron:dev": "npm run electron:build && electron .",

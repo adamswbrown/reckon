@@ -238,7 +238,7 @@ went into `framework.test.ts`. If your rule does not introduce a new
 invariant, the existing framework tests should cover it.
 
 **Recommended: a smoke check.** Run `npm run engine:smoke` against the
-bundled NMEF invoice and confirm the rule fires plausibly. The smoke
+invoice you have on hand and confirm the rule fires plausibly. The smoke
 script writes the three audience reports to `out/`; eyeball the
 Informational report to verify your narrative reads correctly.
 

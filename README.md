@@ -98,7 +98,7 @@ git clone <repo>
 cd reckon
 npm install
 npm test                    # 76 tests, all green
-npm run engine:smoke        # runs the engine against the bundled NMEF invoice
+npm run engine:smoke        # picks up any *.xlsx in the project root
 npm run electron:dev        # builds and launches the desktop app
 ```
 
@@ -234,8 +234,8 @@ data source is wired in.
 ## Status
 
 - 22 rules, 10 framework principles, 76 passing tests.
-- Validated against a real customer invoice (NMEF January 2026) →
-  88 findings, validation OK, ~$309K annual recoverable opportunity.
+- Validated end-to-end against a real Azure cost-export invoice
+  (~5,000 rows, 88 findings, validation passing).
 - Electron desktop app on macOS Apple Silicon (primary), with
   electron-builder configured for Windows (NSIS) and Linux (AppImage).
 - Self-contained: every artefact (report, CSVs, slide deck) renders in

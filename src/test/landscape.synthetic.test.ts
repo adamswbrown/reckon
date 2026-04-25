@@ -1,13 +1,9 @@
 /**
  * Synthetic landscape tests — exercise every card builder against
- * generic, hand-rolled invoice fixtures. These tests run on CI where
- * the NMEF customer fixture is unavailable, and they pin the contract
- * the landscape engine must satisfy for any Azure invoice, not just
- * the one customer we happen to have in hand.
- *
- * The NMEF-specific landscape suite (`landscape.test.ts`) acts as the
- * integration smoke test when the real fixture is present. This file
- * acts as the unit-level safety net.
+ * hand-rolled invoice fixtures. Pins the contract the landscape engine
+ * must satisfy for any Azure invoice. Customer-specific assertions live
+ * in `integration.test.ts`, gated on the presence of a real invoice
+ * (skipped on CI where no fixture is available).
  */
 
 import { describe, expect, it } from "vitest";

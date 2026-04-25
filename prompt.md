@@ -461,7 +461,7 @@ framework.test.ts  # tests that enforce Jeannie rules (e.g. investigate
 ## Testing
 
 Vitest tests that:
-- Parse the attached NMEF invoice successfully
+- Parse the attached sample invoice successfully
 - Validate framework-rule enforcement (see below)
 - Validate that confirmed savings never exceed total invoice
 - Validate evidence cost sum equals finding claimed cost
@@ -516,8 +516,8 @@ shell is ceremony.
 
 ## Reference material I'll attach
 
-- The NMEF invoice file (`NMEF_Azure_Invoice_JAN_26.xlsx`)
-- The existing HTML report (`nmef-finops-analysis.html`) for the design system
+- The sample Azure cost-export invoice file
+- A reference HTML report for the design system
 - The transcript of my conversation with Jeannie (as source material for the 
   framework quotations — do NOT ship the transcript in the app, use it only 
   to verify your quote attribution)

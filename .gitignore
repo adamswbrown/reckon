@@ -12,10 +12,14 @@ src/preload/*.js.map
 # Generated reports / slide decks (test exports against the bundled NMEF invoice)
 out/
 
-# Customer invoice and source material — never commit cost data
-NMEF*.xlsx
-NMEF*.csv
-NMEF*.pdf
+# Customer invoice and source material — never commit cost data.
+# The smoke script and integration tests pick up any *.xlsx in the
+# project root (or RECKON_TEST_INVOICE), so dropping a real export
+# here is supported but it must never be tracked.
+*.xlsx
+*.csv
+*.pdf
+~$*
 transcript.txt
 
 # Node

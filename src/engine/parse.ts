@@ -191,7 +191,7 @@ function readCustomerNameFromSummary(wb: XLSX.WorkBook): string | null {
   if (!summary) return null;
   const rows: any[][] = XLSX.utils.sheet_to_json(summary, { header: 1, defval: null });
   for (const row of rows) {
-    // Layout from NMEF sample: ['', 'Name:', 'North Mill Equipment Finance LLC', null]
+    // Azure Summary sheet layout: ['', 'Name:', '<customer name>', null]
     if (row && String(row[1] ?? "").trim() === "Name:" && row[2]) {
       return String(row[2]).trim();
     }

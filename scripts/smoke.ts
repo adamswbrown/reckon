@@ -1,12 +1,20 @@
 /**
- * End-to-end smoke test: parse the NMEF invoice, run the engine, dump CSVs.
+ * End-to-end smoke test: parse a real invoice, run the engine, dump
+ * every artefact (CSV, three audience HTML reports, slide deck) into
+ * `out/`. Useful for confirming the full pipeline works on a fresh
+ * change.
+ *
  * Run with: `npm run engine:smoke`
+ *
+ * Drop any Azure cost-export `.xlsx` into the project root and this
+ * picks it up automatically. Override the path via the
+ * `RECKON_TEST_INVOICE` env var if you want to point at one elsewhere.
  *
  * Useful to confirm:
  *   - parser handles a real Azure export
  *   - rules trigger at all
  *   - validator produces a sensible report
- *   - CSV writes successfully
+ *   - every renderer writes successfully
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -16,17 +24,28 @@ import { analyse } from "../src/engine/index";
 import { renderCsv } from "../src/render/csv";
 import { renderHtml } from "../src/render/html";
 import { renderSlides } from "../src/render/slides";
+import { findTestInvoice } from "../src/test/_helpers/findInvoice";
 
-const INVOICE = resolve(process.cwd(), "NMEF Azure Invoice JAN 26.xlsx");
 const OUT_DIR = resolve(process.cwd(), "out");
 
 function main(): void {
-  console.log(`Reading ${INVOICE}`);
-  const buf = readFileSync(INVOICE);
-  const invoice = parseInvoice(buf, INVOICE);
+  const invoicePath = findTestInvoice();
+  if (!invoicePath) {
+    console.error(
+      "No invoice found. Drop an Azure cost-export `.xlsx` into the project root, " +
+        "or set RECKON_TEST_INVOICE=/path/to/invoice.xlsx and try again.",
+    );
+    process.exit(1);
+  }
+
+  console.log(`Reading ${invoicePath}`);
+  const buf = readFileSync(invoicePath);
+  const invoice = parseInvoice(buf, invoicePath);
 
   console.log(`Customer:      ${invoice.customerName}`);
-  console.log(`Period:        ${invoice.period.startDate} → ${invoice.period.endDate} (${invoice.period.hoursInPeriod}h)`);
+  console.log(
+    `Period:        ${invoice.period.startDate} → ${invoice.period.endDate} (${invoice.period.hoursInPeriod}h)`,
+  );
   console.log(`Display ccy:   ${invoice.displayCurrency}`);
   console.log(`Total cost:    ${invoice.totalCost.amount.toFixed(2)} ${invoice.displayCurrency}`);
   console.log(`Total cost USD:${invoice.totalCostUsd.amount.toFixed(2)}`);
@@ -38,7 +57,9 @@ function main(): void {
   console.log(`  confirmed:            ${result.findings.filter((f) => f.severity === "confirmed").length}`);
   console.log(`  conditional:          ${result.findings.filter((f) => f.severity === "conditional").length}`);
   console.log(`  investigate:          ${result.findings.filter((f) => f.severity === "investigate").length}`);
-  console.log(`Immediate-wins monthly: ${result.immediateWinsMonthly.toFixed(2)} ${invoice.displayCurrency}`);
+  console.log(
+    `Immediate-wins monthly: ${result.immediateWinsMonthly.toFixed(2)} ${invoice.displayCurrency}`,
+  );
   console.log(`Validation OK:          ${result.validation.ok}`);
   if (result.validation.issues.length > 0) {
     console.log("Validation issues:");
@@ -56,7 +77,9 @@ function main(): void {
         : f.monthlySavingRange
           ? `${f.monthlySavingRange[0].toFixed(2)}–${f.monthlySavingRange[1].toFixed(2)}/mo`
           : "—";
-    console.log(`  #${f.order.toString().padStart(2)} [J${f.jeannieRule}] ${f.severity.padEnd(11)} ${saving.padStart(20)}  ${f.title}`);
+    console.log(
+      `  #${f.order.toString().padStart(2)} [R${f.jeannieRule}] ${f.severity.padEnd(11)} ${saving.padStart(20)}  ${f.title}`,
+    );
   }
 
   mkdirSync(OUT_DIR, { recursive: true });
@@ -77,7 +100,7 @@ function main(): void {
     console.log(`Wrote out/${html.filename} (${(html.html.length / 1024).toFixed(1)} KB)`);
   }
 
-  // Slide deck — TS port of the previous Python tool, identical structure.
+  // Slide deck — pure TypeScript, same data set, different rendering.
   const slides = renderSlides(result);
   writeFileSync(resolve(OUT_DIR, slides.filename), slides.html);
   console.log(`Wrote out/${slides.filename} (${(slides.html.length / 1024).toFixed(1)} KB)`);
