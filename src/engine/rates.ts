@@ -199,6 +199,43 @@ export function normaliseSkuToken(meter: string): string {
   return meter.trim().toLowerCase().replace(/\s+/g, "_");
 }
 
+export interface ParsedSku {
+  /** Family letter, e.g. 'd', 'e', 'b', 'f'. */
+  family: string;
+  /** Generation token: 'v3' | 'v4' | 'v5' | 'v6' | '' (B-series). */
+  generation: string;
+  /** Size-suffix letters between the digits and the generation (e.g. 's', 'ms', 'as'). */
+  sizeSuffix: string;
+  /** True when the SKU's size suffix contains 's' — Azure naming for premium SSD. */
+  isPremiumStorage: boolean;
+}
+
+/**
+ * Parse a meter string into family / generation / storage variant. The 's'
+ * inside the size suffix is Azure's marker for premium-SSD-capable VMs; RIs
+ * cannot crawl across the SSD/HDD boundary even within the same family and
+ * generation, so callers grouping for reservation logic must include
+ * `isPremiumStorage` in the bucket key.
+ */
+export function parseSkuToken(meter: string): ParsedSku {
+  const tok = normaliseSkuToken(meter);
+  const m = tok.match(/^([a-z])\d+([a-z]*)(?:_(v\d+))?/);
+  const family = m?.[1] ?? "?";
+  const sizeSuffix = m?.[2] ?? "";
+  const generation = m?.[3] ?? "";
+  return {
+    family,
+    generation,
+    sizeSuffix,
+    isPremiumStorage: sizeSuffix.includes("s"),
+  };
+}
+
+/** 'ssd' | 'hdd' label for the storage variant — handy for bucket keys and prose. */
+export function storageVariantLabel(parsed: ParsedSku): "ssd" | "hdd" {
+  return parsed.isPremiumStorage ? "ssd" : "hdd";
+}
+
 export interface RateLookup {
   sku: SkuRate;
   region: Region;
