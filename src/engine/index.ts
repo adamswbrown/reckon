@@ -26,6 +26,7 @@ import { windowsHybridBenefitRule } from "./rules/windowsHybridBenefit";
 import { sqlHybridBenefitRule } from "./rules/sqlHybridBenefit";
 import { reservationScopeCheckRule } from "./rules/reservationScopeCheck";
 import { reservationGenerationConsolidationRule } from "./rules/reservationGenerationConsolidation";
+import { reservationStorageStandardisationRule } from "./rules/reservationStorageStandardisation";
 import { appServiceSavingsPlanRule } from "./rules/appServiceSavingsPlan";
 
 // RUNTIME — Jeannie Rules 6, 8.
@@ -55,6 +56,7 @@ export const ALL_RULES: readonly Rule[] = [
   sqlHybridBenefitRule,                      // J2    — Layer 2 (invisible)
   reservationScopeCheckRule,                 // J4    — crawl scope/variant
   reservationGenerationConsolidationRule,    // J4/J5 — generation consolidation
+  reservationStorageStandardisationRule,     // J4    — standardise on SSD for ISF
   appServiceSavingsPlanRule,                 // J1/J5 — Savings Plans third
 
   // Runtime — facts first, then dependent recommendations

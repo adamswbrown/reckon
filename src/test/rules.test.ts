@@ -21,6 +21,7 @@ import { windowsHybridBenefitRule } from "../engine/rules/windowsHybridBenefit";
 import { sqlHybridBenefitRule } from "../engine/rules/sqlHybridBenefit";
 import { reservationScopeCheckRule } from "../engine/rules/reservationScopeCheck";
 import { reservationGenerationConsolidationRule } from "../engine/rules/reservationGenerationConsolidation";
+import { reservationStorageStandardisationRule } from "../engine/rules/reservationStorageStandardisation";
 import { appServiceSavingsPlanRule } from "../engine/rules/appServiceSavingsPlan";
 import { vmRuntimeDerivationRule } from "../engine/rules/vmRuntimeDerivation";
 import { dormantVmClusterRule } from "../engine/rules/dormantVmCluster";
@@ -186,18 +187,6 @@ describe("rule: reservationScopeCheck", () => {
     expect(findings[0].evidence[0].resourceId).toBe("/.../ssd-overflow");
     assertGenericInvariants(findings, invoice(rows));
   });
-  it("surfaces standardise-on-SSD remediation when same family runs both variants in the same region", () => {
-    const rows = [
-      row({ meter: "D4s v5 Reservation", cost: 100, costUsd: 100, resourceId: "/.../ssd-res" }),
-      row({ meter: "D2s v5", cost: 25, costUsd: 25, resourceId: "/.../ssd-overflow" }),
-      row({ meter: "D4 v3", cost: 50, costUsd: 50, resourceId: "/.../hdd-vm-same-region" }),
-    ];
-    const findings = run(reservationScopeCheckRule, invoice(rows));
-    expect(findings.length).toBe(1);
-    expect(findings[0].narrative.consultant).toMatch(/Instance Size Flexibility/);
-    expect(findings[0].narrative.consultant).toMatch(/standardise on SSD/);
-    assertGenericInvariants(findings, invoice(rows));
-  });
 });
 
 describe("rule: reservationGenerationConsolidation", () => {
@@ -234,6 +223,48 @@ describe("rule: reservationGenerationConsolidation", () => {
     expect(findings.length).toBe(1);
     expect(findings[0].id).toContain("ssd");
     assertGenericInvariants(findings, invoice(rows));
+  });
+});
+
+describe("rule: reservationStorageStandardisation", () => {
+  it("flags when the same family runs on both SSD and HDD in one region", () => {
+    const rows = [
+      row({ meter: "D4s v5", cost: 100, costUsd: 100, resourceId: "/.../ssd-vm" }),
+      row({ meter: "D4 v3",  cost: 50,  costUsd: 50,  resourceId: "/.../hdd-vm" }),
+    ];
+    const findings = run(reservationStorageStandardisationRule, invoice(rows));
+    expect(findings.length).toBe(1);
+    expect(findings[0].severity).toBe("investigate");
+    expect(findings[0].narrative.consultant).toMatch(/Instance Size Flexibility/);
+    expect(findings[0].narrative.consultant).toMatch(/standing remediation/i);
+    // Evidence should include both sides.
+    expect(findings[0].evidence.some((e) => e.resourceId === "/.../ssd-vm")).toBe(true);
+    expect(findings[0].evidence.some((e) => e.resourceId === "/.../hdd-vm")).toBe(true);
+    assertGenericInvariants(findings, invoice(rows));
+  });
+  it("fires independently of any reservation row — pure split-storage signal is enough", () => {
+    // No 'Reservation' meters at all; split storage alone should trigger.
+    const rows = [
+      row({ meter: "D2s v5", cost: 30, costUsd: 30, resourceId: "/.../ssd-only-1" }),
+      row({ meter: "D2 v3",  cost: 30, costUsd: 30, resourceId: "/.../hdd-only-1" }),
+    ];
+    const findings = run(reservationStorageStandardisationRule, invoice(rows));
+    expect(findings.length).toBe(1);
+    assertGenericInvariants(findings, invoice(rows));
+  });
+  it("silent when family is single-storage (SSD only)", () => {
+    const rows = [
+      row({ meter: "D2s v5", cost: 30, costUsd: 30, resourceId: "/.../ssd-1" }),
+      row({ meter: "D4s v5", cost: 60, costUsd: 60, resourceId: "/.../ssd-2" }),
+    ];
+    expect(reservationStorageStandardisationRule.evaluate(invoice(rows))).toBeNull();
+  });
+  it("does NOT cross regions — same family on different sides in different regions is two separate stories", () => {
+    const rows = [
+      row({ meter: "D4s v5", resourceLocation: "eastus",     cost: 100, costUsd: 100, resourceId: "/.../east-ssd" }),
+      row({ meter: "D4 v3",  resourceLocation: "westeurope", cost: 50,  costUsd: 50,  resourceId: "/.../weu-hdd" }),
+    ];
+    expect(reservationStorageStandardisationRule.evaluate(invoice(rows))).toBeNull();
   });
 });
 

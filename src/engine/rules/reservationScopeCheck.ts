@@ -91,26 +91,10 @@ export const reservationScopeCheckRule: Rule = {
     );
     if (overflow.length === 0) return null;
 
-    // Detect families+regions present on BOTH sides of the SSD/HDD boundary.
-    // When that's true, the operational fix per Jeannie Rule 4 is to
-    // standardise on SSD so a single Instance Size Flexibility reservation
-    // covers the whole family — surface that recommendation inline.
-    const sidesByFamRegion = new Map<string, Set<"ssd" | "hdd">>();
-    for (const b of buckets.values()) {
-      const k = `${b.family}|${b.region}`;
-      const set = sidesByFamRegion.get(k) ?? new Set<"ssd" | "hdd">();
-      set.add(b.storage);
-      sidesByFamRegion.set(k, set);
-    }
-
     const findings: Finding[] = [];
     let order = 1;
     for (const b of overflow) {
       const famLabel = `${b.family.toUpperCase()}${b.generation ? ` ${b.generation}` : ""} (${b.storage.toUpperCase()})`;
-      const splitVariant = (sidesByFamRegion.get(`${b.family}|${b.region}`)?.size ?? 0) >= 2;
-      const splitVariantNote = splitVariant
-        ? ` Note: family ${b.family.toUpperCase()} runs on both SSD and HDD in ${b.region}; the broader hygiene fix is to standardise on SSD, which lets one Instance Size Flexibility (family-scope) reservation cover every size in the family.`
-        : "";
       const evidence: EvidenceRow[] = b.paygRows.slice(0, 25).map((r) => ({
         resourceId: r.resourceId,
         meter: r.meter,
@@ -141,13 +125,11 @@ export const reservationScopeCheckRule: Rule = {
             `reservation present, ${b.paygRows.length} PAYG VMs, ${formatMoney(monthly, invoice.displayCurrency)} overflow. ` +
             `Storage variant already matches (Instance Size Flexibility cannot crawl SSD↔HDD), so the remaining crawl-failure ` +
             `causes per Jeannie Rule 4 are (a) RG-scoped vs Shared scope and (b) reservation count below fleet size. ` +
-            `Validate via Cost Management → Reservations → Utilisation, then resize or re-scope the reservation.` +
-            splitVariantNote,
+            `Validate via Cost Management → Reservations → Utilisation, then resize or re-scope the reservation.`,
           informational:
             `Detection: same family+generation+storage+region has both reservation rows AND non-zero PAYG. ` +
             `Buckets are split on storage variant ('s' suffix = premium SSD) because RIs cannot apply across ` +
-            `the SSD/HDD boundary. Cause unprovable from billing alone — severity stays 'investigate' (Jeannie Rule 10).` +
-            splitVariantNote,
+            `the SSD/HDD boundary. Cause unprovable from billing alone — severity stays 'investigate' (Jeannie Rule 10).`,
         },
         discoveryQuestions: [
           `Is the reservation for ${famLabel}/${b.region} scoped to a single RG, or Shared?`,
