@@ -1,0 +1,101 @@
+name: Build desktop app
+
+# Triggers:
+#   - push of a v*.*.* tag → cuts a release-shaped build
+#   - manual dispatch → for ad-hoc test builds
+#   - pull request → builds (but does not publish) so the workflow stays green
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Avoid concurrent runs of the same ref overlapping each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os-label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            os-label: macOS (arm64)
+            artifact-glob: "release/*.dmg"
+            artifact-name: jj-macos-arm64
+          - os: windows-latest
+            os-label: Windows (x64)
+            artifact-glob: "release/*.exe"
+            artifact-name: jj-windows-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build distributable
+        # electron-builder reads the `build` block in package.json. The
+        # mac job emits a dmg (arm64), the win job emits an nsis exe.
+        # No code signing — unsigned builds for now; add cert env vars
+        # (CSC_LINK / CSC_KEY_PASSWORD on mac, equivalents on win) when
+        # signing certificates are available.
+        run: npm run electron:dist
+        env:
+          # Skip notarisation on macOS until an Apple Developer ID is wired in.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # GH_TOKEN is required by electron-builder when publishing; we
+          # pass it but rely on `--publish never` semantics implied by the
+          # default electron-builder config (no `publish` block in package.json).
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-glob }}
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Attach builds to GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jj-macos-arm64
+          path: dist/macos
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jj-windows-x64
+          path: dist/windows
+      - name: Create release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/macos/*
+            dist/windows/*
+          generate_release_notes: true

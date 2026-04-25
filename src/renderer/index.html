@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self' data:;" />
+    <title>Reckon — Azure FinOps health check</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">Reckon</span>
+        <span class="brand-title">Azure FinOps health check</span>
+      </div>
+      <div class="brand-sub">FinOps framework, applied row by row.</div>
+    </header>
+
+    <main class="app-grid">
+      <!-- LEFT: controls -->
+      <aside class="pane pane-left">
+        <section class="card drop-zone" id="dropZone">
+          <div class="drop-icon">⤓</div>
+          <div class="drop-title">Drop Azure cost export</div>
+          <div class="drop-sub">.xlsx or .csv from the Azure portal</div>
+          <button class="btn btn-primary" id="pickBtn">Choose file…</button>
+          <div class="drop-file" id="filePicked">No file selected</div>
+        </section>
+
+        <section class="card">
+          <label class="lbl">Customer name (override)</label>
+          <input type="text" id="customerOverride" class="inp" placeholder="auto-detected from file" />
+
+          <label class="lbl">Audience</label>
+          <div class="seg" id="audienceSeg">
+            <button data-aud="customer">Customer</button>
+            <button data-aud="consultant" class="active">Consultant</button>
+            <button data-aud="informational">Informational</button>
+          </div>
+
+          <button class="btn btn-primary btn-block" id="analyseBtn" disabled>Analyse</button>
+        </section>
+
+        <section class="card export-card" id="exportCard" hidden>
+          <div class="lbl">Export</div>
+          <button class="btn btn-block" id="exportHtmlBtn">Save HTML report</button>
+          <button class="btn btn-block" id="exportCsvBtn">Save CSV findings</button>
+          <button class="btn btn-block" id="exportSlidesBtn">Generate slide deck</button>
+          <button class="btn btn-primary btn-block" id="exportAllBtn">Save everything</button>
+          <div class="export-status" id="exportStatus"></div>
+        </section>
+      </aside>
+
+      <!-- CENTRE: preview -->
+      <section class="pane pane-centre">
+        <div class="preview-bar">
+          <span class="preview-title" id="previewTitle">Preview</span>
+          <span class="preview-meta" id="previewMeta"></span>
+        </div>
+        <iframe id="preview" class="preview-frame" sandbox="allow-same-origin allow-scripts"></iframe>
+        <div class="preview-empty" id="previewEmpty">
+          <div class="empty-title">No analysis yet</div>
+          <div class="empty-sub">Drop or pick an Azure cost export, then click Analyse.</div>
+        </div>
+      </section>
+
+      <!-- RIGHT: findings list -->
+      <aside class="pane pane-right">
+        <div class="findings-bar">
+          <div>
+            <div class="findings-count" id="findingsCount">—</div>
+            <div class="findings-sub">findings</div>
+          </div>
+          <div class="validation-pill" id="validationPill" data-state="none">—</div>
+        </div>
+        <div class="findings-headline" id="findingsHeadline" hidden>
+          <div class="hl-amount" id="hlAmount"></div>
+          <div class="hl-label">immediate-wins / month</div>
+        </div>
+        <ol class="findings-list" id="findingsList"></ol>
+      </aside>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>

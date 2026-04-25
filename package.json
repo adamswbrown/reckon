@@ -1,0 +1,57 @@
+{
+  "name": "reckon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reckon — audit-grade FinOps health check for Azure invoices.",
+  "type": "module",
+  "main": "dist-electron/main/main.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "engine:smoke": "tsx scripts/smoke-nmef.ts",
+    "electron:build": "tsc -p tsconfig.app.json && tsc -p tsconfig.renderer.json && node scripts/post-build.mjs",
+    "electron:start": "electron .",
+    "electron:dev": "npm run electron:build && electron .",
+    "electron:dist": "npm run electron:build && electron-builder"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "build": {
+    "appId": "cloud.altra.reckon",
+    "productName": "Reckon",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
