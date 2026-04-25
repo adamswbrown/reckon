@@ -10,13 +10,17 @@ const NMEF = join(
   "NMEF Azure Invoice JAN 26.xlsx"
 );
 
-// The NMEF invoice carries customer data and is gitignored. On CI the file
-// is absent, so this whole suite is an integration check that skips when
-// the fixture isn't present (same pattern as nmef.integration.test.ts).
+// The NMEF invoice is gitignored customer data, so on CI the fixture
+// is absent. This integration suite must skip cleanly without ever
+// reading the file. (vitest's `describe.skip` still evaluates the
+// callback body, so the readFileSync has to be guarded explicitly.)
 const HAS_NMEF = existsSync(NMEF);
-const describeIfNmef = HAS_NMEF ? describe : describe.skip;
 
-describeIfNmef("landscape cards (NMEF JAN 26)", () => {
+(HAS_NMEF ? describe : describe.skip)("landscape cards (NMEF JAN 26)", () => {
+  if (!HAS_NMEF) {
+    it.skip("requires NMEF fixture", () => {});
+    return;
+  }
   const buf = readFileSync(NMEF);
   const invoice = parseInvoice(buf, NMEF);
   const cards = buildLandscape(invoice);
