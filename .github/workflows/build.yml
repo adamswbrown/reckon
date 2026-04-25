@@ -60,17 +60,16 @@ jobs:
       - name: Build distributable
         # electron-builder reads the `build` block in package.json. The
         # mac job emits a dmg (arm64), the win job emits an nsis exe.
-        # No code signing — unsigned builds for now; add cert env vars
-        # (CSC_LINK / CSC_KEY_PASSWORD on mac, equivalents on win) when
-        # signing certificates are available.
-        run: npm run electron:dist
+        # `--publish never` is critical on tag pushes: the matrix build
+        # job is intentionally artifact-producing only, and a dedicated
+        # `release` job below attaches assets via softprops. Without it,
+        # electron-builder auto-detects the tag and tries to publish
+        # using GITHUB_TOKEN, which the build job lacks `contents:write`
+        # permission for — yielding 403s on the runner that wins the race.
+        run: npm run electron:build && npx electron-builder --publish never
         env:
           # Skip notarisation on macOS until an Apple Developer ID is wired in.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-          # GH_TOKEN is required by electron-builder when publishing; we
-          # pass it but rely on `--publish never` semantics implied by the
-          # default electron-builder config (no `publish` block in package.json).
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
