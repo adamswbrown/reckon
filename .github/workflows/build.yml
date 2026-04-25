@@ -27,11 +27,11 @@ jobs:
           - os: macos-latest
             os-label: macOS (arm64)
             artifact-glob: "release/*.dmg"
-            artifact-name: jj-macos-arm64
+            artifact-name: reckon-macos-arm64
           - os: windows-latest
             os-label: Windows (x64)
             artifact-glob: "release/*.exe"
-            artifact-name: jj-windows-x64
+            artifact-name: reckon-windows-x64
 
     runs-on: ${{ matrix.os }}
 
@@ -67,7 +67,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.artifact-name }}
           path: ${{ matrix.artifact-glob }}
@@ -83,14 +83,14 @@ jobs:
       contents: write
     steps:
       - name: Download macOS artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
-          name: jj-macos-arm64
+          name: reckon-macos-arm64
           path: dist/macos
       - name: Download Windows artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
-          name: jj-windows-x64
+          name: reckon-windows-x64
           path: dist/windows
       - name: Create release and upload assets
         uses: softprops/action-gh-release@v2
