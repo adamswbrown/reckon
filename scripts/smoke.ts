@@ -17,14 +17,15 @@
  *   - every renderer writes successfully
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseInvoice } from "../src/engine/parse";
-import { analyse } from "../src/engine/index";
+import { analyse, type AnalysisInputs } from "../src/engine/index";
 import { renderCsv } from "../src/render/csv";
 import { renderHtml } from "../src/render/html";
 import { renderSlides } from "../src/render/slides";
 import { findTestInvoice } from "../src/test/_helpers/findInvoice";
+import { parseDmcScan } from "../src/dmc/parse";
 
 const OUT_DIR = resolve(process.cwd(), "out");
 
@@ -52,7 +53,19 @@ function main(): void {
   console.log(`Rows:          ${invoice.rows.length}`);
   console.log("");
 
-  const result = analyse(invoice);
+  // Optional DMC scan — picked up via env var or implied by the well-known
+  // synthetic fixture path. Unloaded → invoice-only mode (untouched).
+  const dmcDir = process.env.RECKON_TEST_DMC_SCAN
+    ?? (existsSync("test-fixtures/dmc-azure-contoso") ? "test-fixtures/dmc-azure-contoso" : null);
+  const inputs: AnalysisInputs = {};
+  if (dmcDir) {
+    const scan = parseDmcScan(resolve(dmcDir));
+    inputs.dmcScan = scan;
+    console.log(`DMC scan:      ${scan.vms.length} VMs (${scan.vms.filter((v) => v.powerState === "running").length} running, ${scan.vms[0]?.collectionDays ?? "?"}d window)`);
+    console.log("");
+  }
+
+  const result = analyse(invoice, inputs);
   console.log(`Findings:               ${result.findings.length}`);
   console.log(`  confirmed:            ${result.findings.filter((f) => f.severity === "confirmed").length}`);
   console.log(`  conditional:          ${result.findings.filter((f) => f.severity === "conditional").length}`);

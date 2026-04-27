@@ -258,6 +258,318 @@ function slideSnapshot(
   </section>`;
 }
 
+/* ---------------------------------------------------------------------- */
+/* TechM-style landscape + top-services (pie chart) slides                */
+/* ---------------------------------------------------------------------- */
+
+const PIE_PALETTE = [
+  "#1f4e6b", "#2f7a9c", "#4a9bbf", "#6fb8d6", "#8fcfe5",
+  "#b9b272", "#d9a45a", "#c87b4a", "#a85440", "#7d3a35",
+  "#9aa0aa",
+];
+
+interface ServiceSlice { name: string; cost: number; share: number; color: string; }
+
+function topServicesSlices(rows: ReadonlyArray<{ serviceName: string; cost: number }>, n = 10): { slices: ServiceSlice[]; total: number } {
+  const m = new Map<string, number>();
+  for (const r of rows) {
+    const k = r.serviceName || "(unspecified)";
+    m.set(k, (m.get(k) ?? 0) + r.cost);
+  }
+  const sorted = [...m.entries()].sort((a, b) => b[1] - a[1]);
+  const total = sorted.reduce((s, [, v]) => s + v, 0) || 1;
+  const head = sorted.slice(0, n);
+  const tailSum = sorted.slice(n).reduce((s, [, v]) => s + v, 0);
+  const slices: ServiceSlice[] = head.map(([name, cost], i) => ({
+    name, cost, share: cost / total, color: PIE_PALETTE[i] ?? "#9aa0aa",
+  }));
+  if (tailSum > 0) {
+    slices.push({ name: "Other", cost: tailSum, share: tailSum / total, color: PIE_PALETTE[10] });
+  }
+  return { slices, total };
+}
+
+function donutSvg(slices: ServiceSlice[], size = 320): string {
+  const r = size / 2;
+  const inner = r * 0.58;
+  const cx = r;
+  const cy = r;
+  let acc = 0;
+  const arcs = slices.map((s) => {
+    const start = acc;
+    const end = acc + s.share;
+    acc = end;
+    const a0 = start * 2 * Math.PI - Math.PI / 2;
+    const a1 = end * 2 * Math.PI - Math.PI / 2;
+    const large = s.share > 0.5 ? 1 : 0;
+    const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    const xi1 = cx + inner * Math.cos(a1), yi1 = cy + inner * Math.sin(a1);
+    const xi0 = cx + inner * Math.cos(a0), yi0 = cy + inner * Math.sin(a0);
+    // Single slice (full circle) needs a different path.
+    if (s.share >= 0.999) {
+      return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${s.color}"/><circle cx="${cx}" cy="${cy}" r="${inner}" fill="var(--bg)"/>`;
+    }
+    const d = `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} L ${xi1} ${yi1} A ${inner} ${inner} 0 ${large} 0 ${xi0} ${yi0} Z`;
+    return `<path d="${d}" fill="${s.color}"/>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${size} ${size}" width="100%" height="100%" role="img" aria-label="Top services pie chart" xmlns="http://www.w3.org/2000/svg">${arcs}</svg>`;
+}
+
+function slideEstateLandscape(
+  result: AnalysisResult,
+  periodLabel: string,
+  rowsCount: number,
+): string {
+  const ccy = result.invoice.displayCurrency;
+  const subs = new Set(result.invoice.rows.map((r) => r.subscriptionName).filter(Boolean));
+  const monthly = result.invoice.totalCost.amount;
+  const tagCard = result.landscape.find((c) => c.id === "landscape:tag-coverage");
+  const orphanCard = result.landscape.find((c) => c.id === "landscape:orphan-region");
+  const tagShare = tagCard?.metrics?.tagCoverageShare;
+  const orphanShare = orphanCard?.metrics?.orphanShare;
+  const orphanCost = orphanCard?.metrics?.orphanCost;
+  const ruleBuckets = new Map<string, number>();
+  for (const f of result.findings) {
+    if (f.severity === "investigate") continue;
+    const lbl = RULE_LABEL[f.jeannieRule] ?? "Optimisation";
+    ruleBuckets.set(lbl, (ruleBuckets.get(lbl) ?? 0) + 1);
+  }
+  const areas = [...ruleBuckets.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+  const challenges: string[] = [];
+  if (typeof tagShare === "number" && tagShare < 0.7) {
+    challenges.push(`Governance: ${(tagShare * 100).toFixed(0)}% of spend is tagged — accountability is weak`);
+  }
+  if (typeof orphanShare === "number" && orphanShare > 0.005 && typeof orphanCost === "number") {
+    challenges.push(`Orphan / unassigned region cost: ${fmtMoney(orphanCost, ccy)} (${(orphanShare * 100).toFixed(1)}%) — likely deleted-resource artefacts`);
+  }
+  const reservedRows = result.invoice.rows.filter((r) => /reservation|savings plan/i.test(r.meter ?? "")).length;
+  if (reservedRows === 0) {
+    challenges.push("No reservation or savings-plan signal observed in meter data — likely entire estate consumed at PAYG rates");
+  }
+  const investigateCount = result.findings.filter((f) => f.severity === "investigate").length;
+  if (investigateCount > 0) {
+    challenges.push(`${investigateCount} investigate-grade signals require utilisation or topology data not present on the invoice`);
+  }
+  if (challenges.length === 0) {
+    challenges.push("No first-pass governance gaps surfaced from the invoice shape");
+  }
+
+  // Top-left "Current Azure Landscape" facts (TechM slide 1 mirror).
+  const annualEst = monthly * 12;
+  const regions = new Set(result.invoice.rows.map((r) => r.resourceLocation).filter(Boolean));
+  const services = new Set(result.invoice.rows.map((r) => r.serviceName).filter(Boolean));
+  const facts: string[] = [
+    `Period spend ~ ${fmtMoney(monthly, ccy)} (${result.invoice.period.startDate.slice(0, 7)})`,
+    `Annualised extrapolation ~ ${fmtMoney(annualEst, ccy)}`,
+    `No. of subscriptions ~ ${subs.size}`,
+    `Distinct services in use ~ ${services.size}`,
+    `Distinct regions in use ~ ${regions.size}`,
+    `Resources analysed ~ ${rowsCount.toLocaleString()} invoice rows`,
+  ];
+
+  return `
+  <section class="slide slide--landscape">
+    ${tracker(0)}
+    <h2 class="landscape__title reveal">Customer pre-engagement Azure landscape</h2>
+    <div class="landscape__layout">
+      <aside class="landscape__rail landscape__rail--top reveal">Current Azure Landscape</aside>
+      <section class="landscape__panel landscape__panel--top reveal">
+        <ul class="landscape__list landscape__list--facts">
+          ${facts.map((f) => `<li><span class="landscape__dot"></span><span>${esc(f)}</span></li>`).join("")}
+        </ul>
+      </section>
+      <aside class="landscape__rail landscape__rail--bot reveal">Identified Areas of Improvement</aside>
+      <section class="landscape__panel landscape__panel--bot reveal">
+        <ul class="landscape__list">
+          ${areas.map(([lbl, n]) => `<li><span class="landscape__dot"></span><span>${esc(lbl)}</span><span class="landscape__num">${n}</span></li>`).join("")}
+        </ul>
+      </section>
+      <aside class="landscape__rail landscape__rail--right reveal">Challenges</aside>
+      <section class="landscape__panel landscape__panel--right reveal">
+        <ul class="landscape__list landscape__list--plain">
+          ${challenges.map((c) => `<li><span class="landscape__bar"></span><span>${esc(c)}</span></li>`).join("")}
+        </ul>
+      </section>
+    </div>
+    <p class="landscape__note reveal">Note: inputs captured from the cost export only. Licensing model, tenant count, and tooling are discovery-only and need refining during initial engagement.</p>
+    ${sourceLine(periodLabel, rowsCount)}
+  </section>`;
+}
+
+function slideTopServices(
+  result: AnalysisResult,
+  periodLabel: string,
+  rowsCount: number,
+): string {
+  const ccy = result.invoice.displayCurrency;
+  const { slices, total } = topServicesSlices(result.invoice.rows, 10);
+  const periodShort = result.invoice.period.startDate.slice(0, 7);
+  const annualEst = total * 12;
+  const rows = slices.map((s) => `
+    <tr>
+      <td><span class="legend__sw" style="background:${s.color}"></span>${esc(s.name)}</td>
+      <td class="num">${esc(fmtMoney(s.cost, ccy))}</td>
+      <td class="num">${(s.share * 100).toFixed(1)}%</td>
+    </tr>`).join("");
+
+  return `
+  <section class="slide slide--services">
+    ${tracker(0)}
+    <p class="slide__eyebrow reveal">Current spend &middot; top services</p>
+    <h2 class="slide__action-title reveal">Total ${esc(fmtMoney(total, ccy))} for ${esc(periodShort)} — extrapolating ~${esc(fmtMoney(annualEst, ccy))} annualised, concentrated in the top ${slices.length === 11 ? "10" : slices.length} services.</h2>
+    <div class="services__body">
+      <div class="services__chart reveal">${donutSvg(slices)}
+        <div class="services__center">
+          <p class="services__center-label">Monthly</p>
+          <p class="services__center-value">${esc(fmtMoney(total, ccy))}</p>
+        </div>
+      </div>
+      <div class="services__table-wrap reveal">
+        <table class="services__table">
+          <thead><tr><th>Service</th><th class="num">Cost</th><th class="num">Share</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    ${sourceLine(periodLabel, rowsCount, "Annualised figure is a single-period extrapolation; multi-month trend requires sequential exports.")}
+  </section>`;
+}
+
+function slideRightSizing(
+  result: AnalysisResult,
+  periodLabel: string,
+  rowsCount: number,
+): string {
+  const ccy = result.invoice.displayCurrency;
+  const rs = result.findings.filter((f) => f.jeannieRule === 7 && /^Right-size /.test(f.title));
+  if (rs.length === 0) return "";
+
+  const totalMonthly = rs.reduce((s, f) => s + (f.monthlySaving ?? 0), 0);
+  const totalAnnual = totalMonthly * 12;
+  const confirmed = rs.filter((f) => f.severity === "confirmed").length;
+  const conditional = rs.filter((f) => f.severity === "conditional").length;
+
+  const rows = rs.slice(0, 12).map((f) => {
+    const m = f.title.match(/Right-size (\S+) — (\S+) → (\S+) \(cpu p95 (\S+)%, mem p95 (\S+)%\)/);
+    if (!m) return "";
+    const [, vm, fromSku, toSku, cpuP95, memP95] = m;
+    const sevClass = f.severity === "confirmed" ? "rs__sev rs__sev--confirmed" : "rs__sev rs__sev--conditional";
+    return `
+      <tr>
+        <td class="rs__vm">${esc(vm)}</td>
+        <td class="rs__sku">${esc(fromSku)}</td>
+        <td class="rs__sku">${esc(toSku)}</td>
+        <td class="num">${cpuP95}%</td>
+        <td class="num">${memP95}%</td>
+        <td class="num"><strong>${esc(fmtMoney(f.monthlySaving ?? 0, ccy))}</strong>/mo</td>
+        <td><span class="${sevClass}">${esc(f.severity)}</span></td>
+      </tr>`;
+  }).join("");
+
+  return `
+  <section class="slide slide--rightsizing">
+    ${tracker(2)}
+    <p class="slide__eyebrow reveal">Action map &middot; per-VM right-sizing (utilisation-backed)</p>
+    <h2 class="slide__action-title reveal">Telemetry confirms ${esc(fmtMoney(totalAnnual, ccy))} per year of compute is recoverable across ${rs.length} VMs without changing workload behaviour.</h2>
+    <div class="rs__chips reveal">
+      <span class="rs__chip rs__chip--confirmed">${confirmed} confirmed</span>
+      <span class="rs__chip rs__chip--conditional">${conditional} conditional</span>
+      <span class="rs__chip">${esc(fmtMoney(totalMonthly, ccy))}/mo total</span>
+    </div>
+    <div class="rs__table-wrap reveal">
+      <table class="rs__table">
+        <thead><tr>
+          <th>VM</th><th>Current SKU</th><th>Recommended</th>
+          <th class="num">CPU p95</th><th class="num">Mem p95</th>
+          <th class="num">Saving</th><th>Severity</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${sourceLine(periodLabel, rowsCount, "Joined from DMC Azure-mode scan (CPU/mem p95 over 90d) × invoice (compute charge per VM). Rule 7.")}
+  </section>`;
+}
+
+function slidePerSliceActions(
+  result: AnalysisResult,
+  periodLabel: string,
+  rowsCount: number,
+): string {
+  const ccy = result.invoice.displayCurrency;
+  // resourceId → serviceName (cost-weighted dominant).
+  const ridToService = new Map<string, string>();
+  const ridServiceCost = new Map<string, Map<string, number>>();
+  for (const r of result.invoice.rows) {
+    if (!r.resourceId) continue;
+    let svcMap = ridServiceCost.get(r.resourceId);
+    if (!svcMap) { svcMap = new Map(); ridServiceCost.set(r.resourceId, svcMap); }
+    svcMap.set(r.serviceName || "(unspecified)", (svcMap.get(r.serviceName || "(unspecified)") ?? 0) + r.cost);
+  }
+  for (const [rid, m] of ridServiceCost) {
+    const winner = [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (winner) ridToService.set(rid, winner[0]);
+  }
+
+  // Group actionable findings by dominant evidence service.
+  const byService = new Map<string, Finding[]>();
+  const orphans: Finding[] = [];
+  for (const f of result.findings) {
+    if (f.severity === "investigate") continue;
+    const svcCounts = new Map<string, number>();
+    for (const ev of f.evidence) {
+      const svc = ridToService.get(ev.resourceId);
+      if (svc) svcCounts.set(svc, (svcCounts.get(svc) ?? 0) + ev.cost);
+    }
+    const top = [...svcCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (!top) { orphans.push(f); continue; }
+    const arr = byService.get(top[0]) ?? [];
+    arr.push(f);
+    byService.set(top[0], arr);
+  }
+
+  // Sort services by total spend (same source as pie chart) and pick top 6 with findings.
+  const { slices } = topServicesSlices(result.invoice.rows, 999);
+  const rowsHtml = slices
+    .filter((s) => byService.has(s.name))
+    .slice(0, 6)
+    .map((s) => {
+      const fs = (byService.get(s.name) ?? [])
+        .sort((a, b) => savingSortKey(b) - savingSortKey(a))
+        .slice(0, 3);
+      if (fs.length === 0) return "";
+      const actions = fs.map((f) => `
+        <li class="pslice__action">
+          <span class="pslice__sev pslice__sev--${esc(f.severity)}">${esc(f.severity === "confirmed" ? "Confirmed" : "Conditional")}</span>
+          <span class="pslice__title">${esc(f.title)}</span>
+          <span class="pslice__value">${esc(annualised(f, ccy))}</span>
+        </li>`).join("");
+      return `
+        <article class="pslice__row reveal">
+          <header class="pslice__head">
+            <span class="pslice__sw" style="background:${s.color}"></span>
+            <div>
+              <p class="pslice__name">${esc(s.name)}</p>
+              <p class="pslice__meta">${esc(fmtMoney(s.cost, ccy))} · ${(s.share * 100).toFixed(1)}% of spend · ${fs.length} action${fs.length === 1 ? "" : "s"}</p>
+            </div>
+          </header>
+          <ol class="pslice__actions">${actions}</ol>
+        </article>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  return `
+  <section class="slide slide--pslice">
+    ${tracker(0)}
+    <p class="slide__eyebrow reveal">Per-slice action map</p>
+    <h2 class="slide__action-title reveal">For each slice of the pie, the highest-value actions tied to that service.</h2>
+    <div class="pslice__grid">${rowsHtml || `<p class="pslice__empty">No service-attributable actionable findings in this period.</p>`}</div>
+    ${sourceLine(periodLabel, rowsCount, "Findings mapped to service via dominant evidence; investigate-grade items excluded.")}
+  </section>`;
+}
+
 function slideFramework(
   result: AnalysisResult,
   periodLabel: string,
@@ -572,6 +884,72 @@ body { font-family: var(--font-body); color: var(--text); background: var(--bg);
 .limits__head { font-family: var(--font-display); font-size: clamp(18px, 2.2vw, 26px); color: var(--text); font-weight: 500; line-height: 1.2; margin-bottom: clamp(8px, 1.2vh, 14px); }
 .limits__body { font-size: clamp(13px, 1.4vw, 16px); color: var(--text-soft); line-height: 1.6; }
 
+.slide--landscape { padding-top: clamp(56px, 7vh, 88px); }
+.landscape__title { font-family: var(--font-display); font-size: clamp(24px, 2.6vw, 32px); font-weight: 600; color: var(--bg); background: var(--accent); padding: clamp(10px, 1.4vh, 16px) clamp(18px, 2vw, 28px); margin: 0 0 clamp(16px, 2vh, 24px); letter-spacing: -0.2px; }
+.landscape__layout { display: grid; grid-template-columns: clamp(36px, 4vw, 56px) 1.4fr clamp(36px, 4vw, 56px) 1fr; grid-template-rows: auto auto; gap: clamp(8px, 1.2vh, 14px) clamp(10px, 1.2vw, 16px); flex: 1; min-height: 0; }
+.landscape__rail { writing-mode: vertical-rl; transform: rotate(180deg); background: var(--accent); color: var(--bg); font-family: var(--font-mono); font-size: clamp(11px, 1.15vw, 13px); font-weight: 600; text-transform: uppercase; letter-spacing: 1.6px; padding: clamp(14px, 1.8vh, 20px) clamp(8px, 0.8vw, 12px); display: flex; align-items: center; justify-content: center; }
+.landscape__rail--top { grid-column: 1; grid-row: 1; }
+.landscape__rail--bot { grid-column: 1; grid-row: 2; }
+.landscape__rail--right { grid-column: 3; grid-row: 1 / span 2; }
+.landscape__panel { background: var(--bg-soft); border: 1px solid var(--rule); border-left: 3px solid var(--accent); padding: clamp(14px, 2vh, 22px) clamp(16px, 1.8vw, 24px); overflow: auto; }
+.landscape__panel--top { grid-column: 2; grid-row: 1; }
+.landscape__panel--bot { grid-column: 2; grid-row: 2; }
+.landscape__panel--right { grid-column: 4; grid-row: 1 / span 2; }
+.landscape__list { list-style: none; display: flex; flex-direction: column; gap: clamp(7px, 1vh, 11px); }
+.landscape__list li { display: grid; grid-template-columns: 14px 1fr auto; gap: 12px; align-items: center; font-size: clamp(12px, 1.3vw, 15px); color: var(--text); line-height: 1.4; }
+.landscape__list--plain li { grid-template-columns: 4px 1fr; align-items: start; }
+.landscape__list--plain li > span:last-child { color: var(--text-soft); }
+.landscape__list--facts li { font-family: var(--font-mono); font-size: clamp(11px, 1.2vw, 14px); color: var(--text); }
+.landscape__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.landscape__bar { width: 3px; height: 100%; min-height: 16px; background: var(--accent); display: inline-block; align-self: stretch; }
+.landscape__num { font-family: var(--font-mono); font-size: clamp(11px, 1.2vw, 13px); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.landscape__note { margin-top: clamp(12px, 1.8vh, 18px); font-size: clamp(11px, 1.2vw, 13px); color: var(--text-dim); font-style: italic; max-width: 60em; }
+
+.slide--services { padding-top: clamp(72px, 9vh, 120px); }
+.services__body { display: grid; grid-template-columns: minmax(260px, 1fr) 1.4fr; gap: clamp(28px, 4vw, 56px); margin-top: clamp(24px, 3.5vh, 40px); flex: 1; min-height: 0; align-items: center; }
+.services__chart { position: relative; aspect-ratio: 1 / 1; max-width: clamp(260px, 32vh, 380px); margin: 0 auto; }
+.services__center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.services__center-label { font-family: var(--font-mono); font-size: clamp(10px, 1.1vw, 12px); text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); }
+.services__center-value { font-family: var(--font-display); font-size: clamp(18px, 2vw, 24px); font-weight: 600; color: var(--text); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.services__table-wrap { overflow: auto; max-height: 60vh; }
+.services__table { width: 100%; border-collapse: collapse; font-size: clamp(12px, 1.3vw, 14px); }
+.services__table th { text-align: left; font-family: var(--font-mono); font-size: clamp(10px, 1.1vw, 12px); text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--rule-strong); }
+.services__table td { padding: 9px 10px; border-bottom: 1px solid var(--rule); color: var(--text); line-height: 1.35; }
+.services__table .num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); color: var(--text-soft); }
+.legend__sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 10px; vertical-align: middle; }
+
+.slide--rightsizing { padding-top: clamp(72px, 9vh, 120px); }
+.rs__chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: clamp(14px, 2vh, 20px); }
+.rs__chip { font-family: var(--font-mono); font-size: clamp(11px, 1.15vw, 13px); padding: 6px 12px; border: 1px solid var(--rule-strong); border-radius: 999px; color: var(--text-soft); letter-spacing: 0.4px; }
+.rs__chip--confirmed { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.rs__chip--conditional { color: var(--text); }
+.rs__table-wrap { margin-top: clamp(18px, 2.6vh, 28px); flex: 1; min-height: 0; overflow: auto; }
+.rs__table { width: 100%; border-collapse: collapse; font-size: clamp(12px, 1.3vw, 14px); }
+.rs__table th { text-align: left; font-family: var(--font-mono); font-size: clamp(10px, 1.05vw, 12px); text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim); font-weight: 600; padding: 10px 10px; border-bottom: 2px solid var(--rule-strong); position: sticky; top: 0; background: var(--bg); }
+.rs__table td { padding: 10px 10px; border-bottom: 1px solid var(--rule); color: var(--text); line-height: 1.35; vertical-align: top; }
+.rs__table .num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.rs__vm { font-family: var(--font-mono); font-weight: 600; }
+.rs__sku { font-family: var(--font-mono); font-size: clamp(11px, 1.2vw, 13px); color: var(--text-soft); }
+.rs__sev { font-family: var(--font-mono); font-size: clamp(10px, 1.05vw, 12px); text-transform: uppercase; letter-spacing: 1px; padding: 3px 8px; border-radius: 3px; }
+.rs__sev--confirmed { background: var(--accent); color: var(--bg); font-weight: 600; }
+.rs__sev--conditional { border: 1px solid var(--rule-strong); color: var(--text-dim); }
+
+.slide--pslice { padding-top: clamp(72px, 9vh, 120px); }
+.pslice__grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(16px, 2vh, 24px) clamp(24px, 3vw, 40px); margin-top: clamp(20px, 3vh, 32px); align-content: start; flex: 1; min-height: 0; overflow: auto; }
+.pslice__row { display: flex; flex-direction: column; gap: clamp(8px, 1.2vh, 12px); border-top: 2px solid var(--rule-strong); padding-top: clamp(10px, 1.4vh, 14px); }
+.pslice__head { display: grid; grid-template-columns: 14px 1fr; gap: 12px; align-items: start; }
+.pslice__sw { width: 12px; height: 12px; border-radius: 3px; margin-top: 4px; }
+.pslice__name { font-family: var(--font-display); font-size: clamp(15px, 1.7vw, 19px); font-weight: 600; color: var(--text); line-height: 1.2; }
+.pslice__meta { font-family: var(--font-mono); font-size: clamp(10px, 1.05vw, 12px); color: var(--text-dim); margin-top: 3px; letter-spacing: 0.3px; }
+.pslice__actions { list-style: none; display: flex; flex-direction: column; gap: 4px; padding-left: 26px; }
+.pslice__action { display: grid; grid-template-columns: 84px 1fr auto; gap: 10px; align-items: baseline; font-size: clamp(11px, 1.2vw, 13px); color: var(--text); line-height: 1.4; padding: 4px 0; border-bottom: 1px dotted var(--rule); }
+.pslice__sev { font-family: var(--font-mono); font-size: clamp(9px, 1vw, 11px); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+.pslice__sev--confirmed { color: var(--accent); }
+.pslice__sev--conditional { color: var(--text-dim); }
+.pslice__title { color: var(--text-soft); }
+.pslice__value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); font-weight: 500; white-space: nowrap; }
+.pslice__empty { color: var(--text-dim); font-style: italic; }
+
 .slide--next { padding-top: clamp(72px, 9vh, 120px); }
 .next__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(20px, 2.4vw, 32px); margin-top: clamp(32px, 4.5vh, 56px); }
 .next__card { background: var(--bg-soft); border: 1px solid var(--rule); padding: clamp(22px, 3vh, 32px); display: flex; flex-direction: column; gap: 10px; }
@@ -586,13 +964,21 @@ body { font-family: var(--font-body); color: var(--text); background: var(--bg);
 .deck-hints.faded { opacity: 0; pointer-events: none; }
 
 @media (max-width: 1080px) {
-  .approach__grid, .next__grid, .limits__grid { grid-template-columns: repeat(2, 1fr); }
+  .approach__grid, .next__grid, .limits__grid, .pslice__grid { grid-template-columns: repeat(2, 1fr); }
+  .services__body { grid-template-columns: 1fr; }
+  .landscape__layout { grid-template-columns: clamp(32px, 4vw, 48px) 1fr; grid-template-rows: auto auto auto; }
+  .landscape__rail--top { grid-column: 1; grid-row: 1; }
+  .landscape__panel--top { grid-column: 2; grid-row: 1; }
+  .landscape__rail--bot { grid-column: 1; grid-row: 2; }
+  .landscape__panel--bot { grid-column: 2; grid-row: 2; }
+  .landscape__rail--right { grid-column: 1; grid-row: 3; }
+  .landscape__panel--right { grid-column: 2; grid-row: 3; }
   .kpi-row { grid-template-columns: repeat(2, 1fr); gap: clamp(20px, 3vw, 32px) clamp(24px, 4vw, 48px); }
   .finding__body { grid-template-columns: 1fr; }
   .framework__grid { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 720px) {
-  .approach__grid, .next__grid, .limits__grid, .kpi-row, .framework__grid { grid-template-columns: 1fr; }
+  .approach__grid, .next__grid, .limits__grid, .kpi-row, .framework__grid, .pslice__grid { grid-template-columns: 1fr; }
   .summary__point { grid-template-columns: 36px 1fr; }
 }
 @media (max-height: 700px) { .slide { padding: clamp(48px, 6vh, 72px) clamp(40px, 6vw, 80px); } }
@@ -701,9 +1087,13 @@ export function renderSlides(
     slideCover(customer, periodShort, periodLabel) +
     slideExecutiveSummary(result, customer, periodLabel, rowsCount) +
     slideSnapshot(result, periodLabel, rowsCount) +
+    slideEstateLandscape(result, periodLabel, rowsCount) +
+    slideTopServices(result, periodLabel, rowsCount) +
+    slidePerSliceActions(result, periodLabel, rowsCount) +
     slideFramework(result, periodLabel, rowsCount) +
     slideApproach(groups) +
     top.map((f, i) => slideFinding(f, customer, ctx, i, top.length, periodLabel, rowsCount)).join("") +
+    slideRightSizing(result, periodLabel, rowsCount) +
     slideSequencing(top, ctx) +
     slideLimits(periodLabel, rowsCount) +
     slideNextSteps(customer, periodLabel);

@@ -20,6 +20,8 @@ import type {
 } from "../types";
 import { buildLandscape } from "./landscape";
 import { validateFindings, sumMonthlySaving } from "./validate";
+import { joinDmcWithInvoice } from "../dmc/join";
+import { utilisationRightSizingFindings } from "../dmc/rules/rightSizing";
 
 // LEVERS — Jeannie Rule 1 demands this exact order (HB → Reservations → Savings Plans).
 import { windowsHybridBenefitRule } from "./rules/windowsHybridBenefit";
@@ -96,13 +98,30 @@ export interface AnalysisResult {
   immediateWinsMonthly: number;
 }
 
-export function analyse(invoice: ParsedInvoice): AnalysisResult {
+/**
+ * Optional inputs that lift the analysis above invoice-only.
+ *
+ * `dmcScan` carries utilisation telemetry (CPU/mem p95, powered-on hours)
+ * and a resource inventory; with it, Rule 7 graduates from deferred to
+ * actionable. The pipeline stays correct without it — invoice-only is
+ * still a first-class mode.
+ */
+export interface AnalysisInputs {
+  dmcScan?: import("../dmc/types").DmcScan;
+}
+
+export function analyse(invoice: ParsedInvoice, inputs: AnalysisInputs = {}): AnalysisResult {
   const findings: Finding[] = [];
   for (const rule of ALL_RULES) {
     const out = rule.evaluate(invoice);
     if (!out) continue;
     if (Array.isArray(out)) findings.push(...out);
     else findings.push(out);
+  }
+
+  if (inputs.dmcScan) {
+    const joined = joinDmcWithInvoice(inputs.dmcScan, invoice);
+    findings.push(...utilisationRightSizingFindings(joined));
   }
 
   // Re-stamp display order across all findings, preserving rule-emission order

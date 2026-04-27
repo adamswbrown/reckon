@@ -22,6 +22,14 @@ out/
 ~$*
 transcript.txt
 
+# Test fixtures — synthetic and real customer data both stay local.
+# The scan + invoice generators in tools/ rebuild these on demand.
+test-fixtures/
+
+# Ad-hoc screenshots from QA / Playwright runs.
+*.png
+.playwright-mcp/
+
 # Node
 node_modules/
 npm-debug.log*
