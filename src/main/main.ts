@@ -17,8 +17,62 @@ import { analyse, type AnalysisResult } from "../engine/index";
 import { renderHtml, type Audience } from "../render/html";
 import { renderCsv } from "../render/csv";
 import { renderSlides } from "../render/slides";
+import { parseDmcScan } from "../dmc/parse";
+import { extractDmcZip } from "../dmc/zip";
+import type { DmcScan } from "../dmc/types";
+import type { ParsedInvoice } from "../types";
 
 let current: { result: AnalysisResult; sourcePath: string } | null = null;
+let invoiceState: { invoice: ParsedInvoice; sourcePath: string } | null = null;
+let dmcState: { scan: DmcScan; sourcePath: string; cleanup: () => void } | null = null;
+
+function recompute(): AnalysisResult | null {
+  if (!invoiceState) return null;
+  const result = analyse(
+    invoiceState.invoice,
+    dmcState ? { dmcScan: dmcState.scan } : {},
+  );
+  current = { result, sourcePath: invoiceState.sourcePath };
+  return result;
+}
+
+function summarise(result: AnalysisResult, sourcePath: string) {
+  return {
+    sourceFile: basename(sourcePath),
+    customerName: result.invoice.customerName,
+    period: result.invoice.period,
+    displayCurrency: result.invoice.displayCurrency,
+    totalCost: result.invoice.totalCost.amount,
+    totalCostUsd: result.invoice.totalCostUsd.amount,
+    rowCount: result.invoice.rows.length,
+    immediateWinsMonthly: result.immediateWinsMonthly,
+    validation: result.validation,
+    findings: result.findings.map((f) => ({
+      id: f.id,
+      order: f.order,
+      title: f.title,
+      category: f.category,
+      jeannieRule: f.jeannieRule,
+      severity: f.severity,
+      confidence: f.confidence,
+      monthlySaving: f.monthlySaving,
+      monthlySavingRange: f.monthlySavingRange,
+      annualSaving: f.annualSaving,
+      effort: f.effort,
+      evidenceCount: f.evidence.length,
+    })),
+    dmc: dmcState
+      ? {
+          loaded: true,
+          subscriptionId: dmcState.scan.meta.subscriptionId,
+          subscriptionName: dmcState.scan.meta.subscriptionName,
+          vmCount: dmcState.scan.vms.length,
+          runningVms: dmcState.scan.vms.filter((v) => v.powerState === "running").length,
+          windowDays: dmcState.scan.vms[0]?.collectionDays ?? null,
+        }
+      : { loaded: false as const },
+  };
+}
 
 function periodSlug(): string {
   return current?.result.invoice.period.startDate.slice(0, 7) ?? "unknown";
@@ -70,33 +124,69 @@ ipcMain.handle("dialog:openInvoice", async () => {
 ipcMain.handle("analyse:file", async (_e, filePath: string) => {
   const buf = readFileSync(filePath);
   const invoice = parseInvoice(buf, filePath);
-  const result = analyse(invoice);
-  current = { result, sourcePath: filePath };
-  return {
-    sourceFile: basename(filePath),
-    customerName: invoice.customerName,
-    period: invoice.period,
-    displayCurrency: invoice.displayCurrency,
-    totalCost: invoice.totalCost.amount,
-    totalCostUsd: invoice.totalCostUsd.amount,
-    rowCount: invoice.rows.length,
-    immediateWinsMonthly: result.immediateWinsMonthly,
-    validation: result.validation,
-    findings: result.findings.map((f) => ({
-      id: f.id,
-      order: f.order,
-      title: f.title,
-      category: f.category,
-      jeannieRule: f.jeannieRule,
-      severity: f.severity,
-      confidence: f.confidence,
-      monthlySaving: f.monthlySaving,
-      monthlySavingRange: f.monthlySavingRange,
-      annualSaving: f.annualSaving,
-      effort: f.effort,
-      evidenceCount: f.evidence.length,
-    })),
-  };
+  invoiceState = { invoice, sourcePath: filePath };
+  const result = recompute();
+  if (!result) throw new Error("recompute failed: invoice missing");
+  return summarise(result, filePath);
+});
+
+/**
+ * Pick a DMC zip and return its path; password is collected separately
+ * (renderer-side input) before `dmc:loadZip` is invoked.
+ */
+ipcMain.handle("dialog:openDmcZip", async () => {
+  const r = await dialog.showOpenDialog({
+    title: "Select DMC scan archive (zip)",
+    properties: ["openFile"],
+    filters: [
+      { name: "Zip archive", extensions: ["zip"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  if (r.canceled || r.filePaths.length === 0) return null;
+  return r.filePaths[0];
+});
+
+/**
+ * Load and decrypt a DMC scan zip, parse it, store it alongside the
+ * invoice (if any), and return an updated AnalysisSummary. If no
+ * invoice is loaded yet, returns null — the renderer should prompt
+ * the user to load the invoice first (or hold the DMC and re-render
+ * on next invoice load — currently the simpler path is enforced).
+ */
+ipcMain.handle("dmc:loadZip", async (_e, zipPath: string, password: string) => {
+  // Replace any prior DMC state and clean up its temp dir first.
+  if (dmcState) {
+    try { dmcState.cleanup(); } catch { /* best-effort */ }
+    dmcState = null;
+  }
+  const extracted = await extractDmcZip(zipPath, password);
+  try {
+    const scan = parseDmcScan(extracted.scanRoot);
+    dmcState = { scan, sourcePath: zipPath, cleanup: extracted.cleanup };
+  } catch (err) {
+    extracted.cleanup();
+    throw err;
+  }
+  if (!invoiceState) {
+    // Held in memory; once the invoice loads, recompute will fold this in.
+    return { dmcLoaded: true, awaitingInvoice: true };
+  }
+  const result = recompute();
+  if (!result) throw new Error("recompute failed after DMC load");
+  return { dmcLoaded: true, summary: summarise(result, invoiceState.sourcePath) };
+});
+
+ipcMain.handle("dmc:clear", () => {
+  if (dmcState) {
+    try { dmcState.cleanup(); } catch { /* best-effort */ }
+    dmcState = null;
+  }
+  if (invoiceState) {
+    const result = recompute();
+    if (result) return { cleared: true, summary: summarise(result, invoiceState.sourcePath) };
+  }
+  return { cleared: true };
 });
 
 ipcMain.handle("render:html", (_e, audience: Audience, customerNameOverride?: string) => {

@@ -22,6 +22,17 @@ interface FindingSummary {
   evidenceCount: number;
 }
 
+type DmcStatus =
+  | { loaded: false }
+  | {
+      loaded: true;
+      subscriptionId: string;
+      subscriptionName: string;
+      vmCount: number;
+      runningVms: number;
+      windowDays: number | null;
+    };
+
 interface AnalysisSummary {
   sourceFile: string;
   customerName: string;
@@ -33,11 +44,21 @@ interface AnalysisSummary {
   immediateWinsMonthly: number;
   validation: { ok: boolean; issues: { level: string; code: string; message: string }[] };
   findings: FindingSummary[];
+  dmc: DmcStatus;
+}
+
+interface DmcLoadResult {
+  dmcLoaded: true;
+  awaitingInvoice?: boolean;
+  summary?: AnalysisSummary;
 }
 
 interface Api {
   pickInvoice: () => Promise<string | null>;
   analyseFile: (path: string) => Promise<AnalysisSummary>;
+  pickDmcZip: () => Promise<string | null>;
+  loadDmcZip: (path: string, password: string) => Promise<DmcLoadResult>;
+  clearDmc: () => Promise<{ cleared: true; summary?: AnalysisSummary }>;
   renderHtml: (audience: Audience, customerNameOverride?: string) => Promise<{ html: string; filename: string } | null>;
   exportHtml: (audience: Audience, customerNameOverride?: string) => Promise<{ saved: boolean; path?: string }>;
   exportCsv: (customerNameOverride?: string) => Promise<{ saved: boolean; findingsPath?: string; evidencePath?: string }>;
@@ -79,10 +100,76 @@ const findingsHeadline = $("findingsHeadline");
 const hlAmount = $("hlAmount");
 const findingsList = $<HTMLOListElement>("findingsList");
 const toast = $("toast");
+const dmcPickBtn = $<HTMLButtonElement>("dmcPickBtn");
+const dmcFilePicked = $("dmcFilePicked");
+const dmcPassword = $<HTMLInputElement>("dmcPassword");
+const dmcLoadBtn = $<HTMLButtonElement>("dmcLoadBtn");
+const dmcStatus = $("dmcStatus");
+const dmcClearBtn = $<HTMLButtonElement>("dmcClearBtn");
 
 let pickedPath: string | null = null;
+let pickedDmcPath: string | null = null;
 let summary: AnalysisSummary | null = null;
 let audience: Audience = "consultant";
+
+function refreshDmcLoadEnabled(): void {
+  dmcLoadBtn.disabled = !pickedDmcPath || dmcPassword.value.trim().length === 0;
+}
+
+dmcPickBtn.addEventListener("click", async () => {
+  const p = await window.api.pickDmcZip();
+  if (!p) return;
+  pickedDmcPath = p;
+  dmcFilePicked.textContent = p.split("/").pop() ?? p;
+  refreshDmcLoadEnabled();
+});
+
+dmcPassword.addEventListener("input", refreshDmcLoadEnabled);
+
+dmcLoadBtn.addEventListener("click", async () => {
+  if (!pickedDmcPath) return;
+  dmcLoadBtn.disabled = true;
+  dmcLoadBtn.textContent = "Decrypting…";
+  dmcStatus.textContent = "";
+  try {
+    const r = await window.api.loadDmcZip(pickedDmcPath, dmcPassword.value);
+    if (r.awaitingInvoice) {
+      dmcStatus.textContent = "DMC scan held. Load the invoice to fold utilisation in.";
+    } else if (r.summary) {
+      summary = r.summary;
+      paintSummary(r.summary);
+      await refreshPreview();
+      const d = r.summary.dmc;
+      dmcStatus.textContent = d.loaded
+        ? `Loaded ${d.vmCount} VMs (${d.runningVms} running) — ${d.windowDays ?? "?"}d window`
+        : "Loaded";
+      showToast("DMC scan joined to invoice");
+    }
+    dmcPassword.value = "";
+    dmcClearBtn.hidden = false;
+  } catch (err) {
+    dmcStatus.textContent = (err as Error).message;
+    showToast(`DMC load failed: ${(err as Error).message}`);
+  } finally {
+    dmcLoadBtn.textContent = "Load DMC scan";
+    refreshDmcLoadEnabled();
+  }
+});
+
+dmcClearBtn.addEventListener("click", async () => {
+  const r = await window.api.clearDmc();
+  if (r.summary) {
+    summary = r.summary;
+    paintSummary(r.summary);
+    await refreshPreview();
+  }
+  dmcStatus.textContent = "";
+  dmcFilePicked.textContent = "No archive selected";
+  pickedDmcPath = null;
+  dmcClearBtn.hidden = true;
+  refreshDmcLoadEnabled();
+  showToast("DMC scan removed");
+});
 
 function setPickedPath(p: string | null): void {
   pickedPath = p;
@@ -156,7 +243,10 @@ function paintSummary(s: AnalysisSummary): void {
   findingsList.innerHTML = "";
   for (const f of s.findings) findingsList.appendChild(findingRow(f, s.displayCurrency));
 
-  previewMeta.textContent = `${s.customerName} · ${s.period.startDate.slice(0, 7)} · ${s.rowCount.toLocaleString()} rows · ${fmtMoney(s.totalCost, s.displayCurrency)}`;
+  const dmcLine = s.dmc.loaded
+    ? ` · DMC: ${s.dmc.vmCount} VMs (${s.dmc.runningVms} running, ${s.dmc.windowDays ?? "?"}d)`
+    : "";
+  previewMeta.textContent = `${s.customerName} · ${s.period.startDate.slice(0, 7)} · ${s.rowCount.toLocaleString()} rows · ${fmtMoney(s.totalCost, s.displayCurrency)}${dmcLine}`;
 
   if (!customerOverride.value.trim()) customerOverride.placeholder = s.customerName;
 }

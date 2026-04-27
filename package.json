@@ -16,9 +16,11 @@
     "electron:dist": "npm run electron:build && electron-builder"
   },
   "dependencies": {
+    "adm-zip": "^0.5.17",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^22.0.0",
     "electron": "^33.4.11",
     "electron-builder": "^25.1.8",

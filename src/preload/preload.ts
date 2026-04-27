@@ -20,6 +20,17 @@ export interface FindingSummary {
   evidenceCount: number;
 }
 
+export type DmcStatus =
+  | { loaded: false }
+  | {
+      loaded: true;
+      subscriptionId: string;
+      subscriptionName: string;
+      vmCount: number;
+      runningVms: number;
+      windowDays: number | null;
+    };
+
 export interface AnalysisSummary {
   sourceFile: string;
   customerName: string;
@@ -31,6 +42,13 @@ export interface AnalysisSummary {
   immediateWinsMonthly: number;
   validation: { ok: boolean; issues: { level: string; code: string; message: string }[] };
   findings: FindingSummary[];
+  dmc: DmcStatus;
+}
+
+export interface DmcLoadResult {
+  dmcLoaded: true;
+  awaitingInvoice?: boolean;
+  summary?: AnalysisSummary;
 }
 
 export type Audience = "customer" | "consultant" | "informational";
@@ -38,6 +56,11 @@ export type Audience = "customer" | "consultant" | "informational";
 const api = {
   pickInvoice: (): Promise<string | null> => ipcRenderer.invoke("dialog:openInvoice"),
   analyseFile: (path: string): Promise<AnalysisSummary> => ipcRenderer.invoke("analyse:file", path),
+  pickDmcZip: (): Promise<string | null> => ipcRenderer.invoke("dialog:openDmcZip"),
+  loadDmcZip: (path: string, password: string): Promise<DmcLoadResult> =>
+    ipcRenderer.invoke("dmc:loadZip", path, password),
+  clearDmc: (): Promise<{ cleared: true; summary?: AnalysisSummary }> =>
+    ipcRenderer.invoke("dmc:clear"),
   renderHtml: (audience: Audience, customerNameOverride?: string): Promise<{ html: string; filename: string } | null> =>
     ipcRenderer.invoke("render:html", audience, customerNameOverride),
   exportHtml: (audience: Audience, customerNameOverride?: string): Promise<{ saved: boolean; path?: string }> =>

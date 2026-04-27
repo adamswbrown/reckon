@@ -40,6 +40,17 @@
           <button class="btn btn-primary btn-block" id="analyseBtn" disabled>Analyse</button>
         </section>
 
+        <section class="card" id="dmcCard">
+          <div class="lbl">DMC scan (optional — utilisation join)</div>
+          <button class="btn btn-block" id="dmcPickBtn">Choose .zip…</button>
+          <div class="drop-file" id="dmcFilePicked">No archive selected</div>
+          <label class="lbl" style="margin-top: 10px;">Password</label>
+          <input type="password" id="dmcPassword" class="inp" placeholder="archive password" autocomplete="off" />
+          <button class="btn btn-primary btn-block" id="dmcLoadBtn" disabled>Load DMC scan</button>
+          <div class="export-status" id="dmcStatus"></div>
+          <button class="btn btn-block" id="dmcClearBtn" hidden>Remove DMC scan</button>
+        </section>
+
         <section class="card export-card" id="exportCard" hidden>
           <div class="lbl">Export</div>
           <button class="btn btn-block" id="exportHtmlBtn">Save HTML report</button>
