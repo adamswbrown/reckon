@@ -105,10 +105,10 @@ export const FRAMEWORK_RULES: readonly FrameworkRule[] = [
     number: 4,
     title: "Reservations crawl — scope, generation, SSD all matter",
     statement:
-      "Reservations apply themselves to matching VMs by 'crawling' across the configured scope. Coverage breaks for four distinct reasons: scope set too narrowly (single-RG when Shared would crawl across the subscription family); split generations (mixed v3/v5/v6 fragmenting coverage); disk-variant mismatch (D2v2 and D2sv2 are separate reservation namespaces); and staggered end dates that create co-termination overhead.",
+      "Reservations apply themselves to matching VMs by 'crawling' across the configured scope, and Instance Size Flexibility lets one reservation cover any size in the same family — but only on one side of the SSD/HDD boundary. D2v2 (HDD) and D2sv2 (SSD) live in separate reservation namespaces and cannot share a commitment. Coverage then breaks for three further reasons within a namespace: scope set too narrowly (single-RG when Shared would crawl across the subscription family); split generations (mixed v3/v5/v6 fragmenting coverage); and staggered end dates that create co-termination overhead. The standing remediation when an estate has both variants in the same family is to standardise on SSD so a single Instance Size Flexibility reservation covers the whole family.",
     transcriptLines: [193, 195, 197],
     guidance:
-      "Flag four crawl failures: (a) wrong scope (single-RG when Shared would crawl across the subscription family); (b) split generations (mixed v3/v5/v6 fragmenting coverage — recommend consolidation to v5 or newest stable); (c) SSD/spinning-disk variant mismatch (D2V2 vs D2sV2 are separate reservation namespaces); (d) co-termination management overhead from staggered end dates.",
+      "Treat the SSD/HDD divide as a hard precondition: bucket reservations and PAYG VMs by family + generation + storage variant ('s' suffix = premium SSD) before checking for overflow or consolidation. Within each bucket, flag three crawl failures: (a) wrong scope (single-RG when Shared would crawl across the subscription family); (b) split generations (mixed v3/v5/v6 fragmenting coverage — recommend consolidation to v5 or newest stable, exchange-safe per Rule 5); (c) co-termination management overhead from staggered end dates. When the same family appears on both sides of the SSD/HDD boundary, recommend standardising on SSD so Instance Size Flexibility covers the whole family with one reservation.",
     derived: false,
     derivedGuidance: "",
   },
